@@ -63,6 +63,9 @@ namespace VehicleState
 	// Get the only existing vehicle vis state, if there is only one. Otherwise, this returns null.
 	import CSceneVehicleVis@ GetSingularVis(ISceneVis@ sceneVis) from "VehicleState";
 
+	// Get the vehicle vis being viewed.
+	import CSceneVehicleVis@ GetViewingVis(ISceneVis@ sceneVis) from "VehicleState";
+
 	// Get all vehicle vis states. Mostly used for debugging.
 	import array<CSceneVehicleVis@> GetAllVis(ISceneVis@ sceneVis) from "VehicleState";
 #elif MP4

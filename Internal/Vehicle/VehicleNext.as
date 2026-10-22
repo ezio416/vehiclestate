@@ -80,9 +80,39 @@ namespace VehicleState
 		return null;
 	}
 
-	// Get the vehicle vis being viewed.
+	// Get the only existing vehicle vis state, if there is only one. Otherwise, this returns null.
 	CSceneVehicleVis@ GetSingularVis(ISceneVis@ sceneVis)
 	{
+		auto vehicleVisMgr = SceneVis::GetManager(sceneVis, VehiclesManagerIndex); // NSceneVehicleVis_SMgr
+		if (vehicleVisMgr is null) {
+			return null;
+		}
+
+		if (!CheckValidVehicles(vehicleVisMgr)) {
+			return null;
+		}
+
+		auto vehiclesCount = Dev::GetOffsetUint32(vehicleVisMgr, VehiclesOffset + 0x8);
+		if (vehiclesCount != 1) {
+			return null;
+		}
+
+		auto vehicles = Dev::GetOffsetNod(vehicleVisMgr, VehiclesOffset);
+		auto nodVehicle = Dev::GetOffsetNod(vehicles, 0);
+		return Dev::ForceCast<CSceneVehicleVis@>(nodVehicle).Get();
+	}
+
+	// Get the vehicle vis being viewed.
+	CSceneVehicleVis@ GetViewingVis(ISceneVis@ sceneVis)
+	{
+		auto gameTerminal = GetGameTerminal();
+		if (gameTerminal !is null) {
+			auto player = cast<CSmPlayer>(gameTerminal.GUIPlayer);
+			if (player !is null) {
+				return GetVis(sceneVis, player);
+			}
+		}
+
 		auto vehicleVisMgr = SceneVis::GetManager(sceneVis, VehiclesManagerIndex); // NSceneVehicleVis_SMgr
 		if (vehicleVisMgr is null) {
 			return null;
