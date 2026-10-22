@@ -102,7 +102,7 @@ namespace VehicleState
 		return Dev::ForceCast<CSceneVehicleVis@>(nodVehicle).Get();
 	}
 
-	// Get the vehicle vis being viewed.
+	// Get the vehicle vis being viewed. Could be a player or a ghost.
 	CSceneVehicleVis@ GetViewingVis(ISceneVis@ sceneVis)
 	{
 		auto gameTerminal = GetGameTerminal();
@@ -148,6 +148,16 @@ namespace VehicleState
 				return null;
 			}
 		}
+	}
+
+	// Get the vehicle vis state being viewed. Could be a player or a ghost.
+	CSceneVehicleVisState@ GetViewingVisState(ISceneVis@ sceneVis)
+	{
+		auto vis = GetViewingVis(sceneVis);
+		if (vis is null) {
+			return null;
+		}
+		return vis.AsyncState;
 	}
 
 	// Get all vehicle vis states. Mostly used for debugging.
