@@ -262,6 +262,9 @@ namespace VehicleState
 		int16 OffsetCruiseDisplaySpeed = 0;
 		int16 OffsetVehicleType = 0;
 
+		int16 OffsetIsViewingGhost = 0;
+		int16 OffsetViewingEntityId = 0;
+
 		MwId IdCharacterPilot;
 		MwId IdCarSport;
 		MwId IdCarSnow;
