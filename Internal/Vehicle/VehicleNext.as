@@ -7,37 +7,16 @@ namespace VehicleState
 	// - 2022-03-31: 12
 	// - 2022-07-08: 11
 	// - 2023-03-03: 12
-	uint VehiclesManagerIndex = 12;
+	// - 2025-09-26: 13
+	uint VehiclesManagerIndex = 13;
 	// -        ...: 0x1C8
 	// - 2023-03-03: 0x1E0
-	uint VehiclesOffset = 0x1E0;
+	// - 2023-12-21: 0x210
+	uint VehiclesOffset = 0x210;
 
 	uint GetPlayerVehicleID(CSmPlayer@ player)
 	{
-		// When Vehicle is null, we're either playing offline, or we're spectating in multiplayer
-		auto scriptPlayer = cast<CSmScriptPlayer>(player.ScriptAPI);
-		if (scriptPlayer !is null && scriptPlayer.Vehicle !is null) {
-			return scriptPlayer.Vehicle.Id.Value;
-		}
-
-		// Without the Vehicle object, we can find the ID at an offset in CSmPlayer
-		if (g_offsetSpawnableObjectModelIndex == 0) {
-			auto type = Reflection::GetType("CSmPlayer");
-			if (type is null) {
-				error("Unable to find reflection info for CSmPlayer!");
-			}
-			g_offsetSpawnableObjectModelIndex = type.GetMember("SpawnableObjectModelIndex").Offset - 0x20;
-		}
-
-		// Get the ID and make sure it actually matches the 0x02000000 mask
-		uint maybeID = Dev::GetOffsetUint32(player, g_offsetSpawnableObjectModelIndex);
-		//print("maybe ID = " + Text::Format("%08x", maybeID));
-		if (maybeID & 0xFFF00000 == 0x02000000) {
-			return maybeID;
-		}
-
-		// Not found :(
-		return 0;
+		return player.GetCurrentEntityID();
 	}
 
 	bool CheckValidVehicles(CMwNod@ vehicleVisMgr)
@@ -66,11 +45,12 @@ namespace VehicleState
 	// Get vehicle vis from a given player.
 	CSceneVehicleVis@ GetVis(ISceneVis@ sceneVis, CSmPlayer@ player)
 	{
-		return GetVis(sceneVis, GetPlayerVehicleID(player));
+		return GetVisFromId(sceneVis, GetPlayerVehicleID(player));
 	}
 
-	// Get vehicle vis with a given entity ID.
-	CSceneVehicleVis@ GetVis(ISceneVis@ sceneVis, uint vehicleEntityId)
+
+	// Get the vehicle vis with the given entity ID.
+	CSceneVehicleVis@ GetVisFromId(ISceneVis@ sceneVis, uint vehicleEntityId)
 	{
 		auto vehicleVisMgr = SceneVis::GetManager(sceneVis, VehiclesManagerIndex); // NSceneVehicleVis_SMgr
 		if (vehicleVisMgr is null) {
@@ -145,16 +125,10 @@ namespace VehicleState
 	// is why this function exists.
 	float GetRPM(CSceneVehicleVisState@ vis)
 	{
-		if (g_offsetEngineRPM == 0) {
-			auto type = Reflection::GetType("CSceneVehicleVisState");
-			if (type is null) {
-				error("Unable to find reflection info for CSceneVehicleVisState!");
-				return 0.0f;
-			}
-			g_offsetEngineRPM = type.GetMember("CurGear").Offset - 0xC;
+		if (Internal::OffsetEngineRPM < 0) {
+			return 0;
 		}
-
-		return Dev::GetOffsetFloat(vis, g_offsetEngineRPM);
+		return Dev::GetOffsetFloat(vis, Internal::OffsetEngineRPM);
 	}
 
 	// Get wheel dirt amount for vehicle vis. For w, use one of the following:
@@ -162,41 +136,137 @@ namespace VehicleState
 	//  1 = Front Right
 	//  2 = Rear Left
 	//  3 = Rear Right
+	// These indices are inconsistent with the game's memory but must remain unchanged as to not break dependent plugins.
 	float GetWheelDirt(CSceneVehicleVisState@ vis, int w)
 	{
-		if (g_offsetWheelDirt.Length == 0) {
-			auto type = Reflection::GetType("CSceneVehicleVisState");
-			if (type is null) {
-				error("Unable to find reflection info for CSceneVehicleVisState!");
-				return 0.0f;
-			}
-			g_offsetWheelDirt.InsertLast(type.GetMember("FLIcing01").Offset - 4);
-			g_offsetWheelDirt.InsertLast(type.GetMember("FRIcing01").Offset - 4);
-			g_offsetWheelDirt.InsertLast(type.GetMember("RLIcing01").Offset - 4);
-			g_offsetWheelDirt.InsertLast(type.GetMember("RRIcing01").Offset - 4);
+		if (Internal::OffsetWheelDirt.Length == 0) {
+			return 0;
 		}
-
-		return Dev::GetOffsetFloat(vis, g_offsetWheelDirt[w]);
+		int16 offset = Internal::OffsetWheelDirt[w];
+		if (offset < 0) {
+			return 0;
+		}
+		return Dev::GetOffsetFloat(vis, offset);
 	}
 
 	// Get relative side speed for vehicle.
 	float GetSideSpeed(CSceneVehicleVisState@ vis)
 	{
-		if (g_offsetSideSpeed == 0) {
-			auto type = Reflection::GetType("CSceneVehicleVisState");
-			if (type is null) {
-				error("Unable to find reflection info for CSceneVehicleVisState!");
-				return 0.0f;
-			}
-			g_offsetSideSpeed = type.GetMember("FrontSpeed").Offset + 4;
+		if (Internal::OffsetSideSpeed < 0) {
+			return 0;
 		}
-
-		return Dev::GetOffsetFloat(vis, g_offsetSideSpeed);
+		return Dev::GetOffsetFloat(vis, Internal::OffsetSideSpeed);
 	}
 
-	uint16 g_offsetSpawnableObjectModelIndex = 0;
-	uint16 g_offsetEngineRPM = 0;
-	array<uint16> g_offsetWheelDirt;
-	uint16 g_offsetSideSpeed = 0;
+	// Get wheel falling state, and if in water. For w, use one of the following:
+	//  0 = Front Left
+	//  1 = Front Right
+	//  2 = Rear Left
+	//  3 = Rear Right
+	// These indices are inconsistent with the game's memory but must remain unchanged as to not break dependent plugins.
+	// The value returned seems to always be even (0, 2, 4, 6, 8), but this may be completely
+	// incorrect and give unexpected results. It is only present here because it technically
+	// exists in-game and may be useful to someone.
+	FallingState GetWheelFalling(CSceneVehicleVisState@ vis, int w)
+	{
+		if (Internal::OffsetWheelFalling.Length == 0) {
+			return FallingState(0);
+		}
+		int16 offset = Internal::OffsetWheelFalling[w];
+		if (offset < 0) {
+			return FallingState(0);
+		}
+		int state = Dev::GetOffsetInt32(vis, offset);
+		array<int> states = {0, 2, 4, 6, 8};
+		if (states.Find(state) == -1) {
+			return FallingState(0);
+		}
+		return FallingState(state);
+	}
+
+	// Get the last turbo level that the vehicle touched. This will return the last level
+	// even if the vehicle is not currently in contact with a turbo gate/surface.
+	TurboLevel GetLastTurboLevel(CSceneVehicleVisState@ vis)
+	{
+		if (Internal::OffsetLastTurboLevel < 0) {
+			return TurboLevel::None;
+		}
+		uint level = Dev::GetOffsetUint32(vis, Internal::OffsetLastTurboLevel);
+		if (level < 1 || level > 5) {
+			return TurboLevel::None;
+		}
+		return TurboLevel(level);
+	}
+
+	// Get a timer which counts from 0.0 to 1.0 in the final second of reactor boost.
+	// Doesn't seem to work when watching a replay.
+	float GetReactorFinalTimer(CSceneVehicleVisState@ vis)
+	{
+		if (Internal::OffsetReactorFinalTimer < 0) {
+			return 0;
+		}
+		return Dev::GetOffsetFloat(vis, Internal::OffsetReactorFinalTimer);
+	}
+
+	// Get the current speed displayed on the back of the car if under the influence of Cruise Control.
+	// If not in Cruise Control, returns 0.
+	int GetCruiseDisplaySpeed(CSceneVehicleVisState@ vis)
+	{
+		if (Internal::OffsetCruiseDisplaySpeed < 0) {
+			return 0;
+		}
+		return Dev::GetOffsetInt32(vis, Internal::OffsetCruiseDisplaySpeed);
+	}
+
+	// Get the current vehicle type.
+	VehicleType GetVehicleType(CSceneVehicleVisState@ vis)
+	{
+		if (Internal::OffsetVehicleType < 0) {
+			return VehicleType::CarSport;
+		}
+
+		CSmArenaClient@ playground = cast<CSmArenaClient@>(GetApp().CurrentPlayground);
+		if (playground is null) {
+			return VehicleType::CarSport;
+		}
+
+		const uint8 index = Dev::GetOffsetUint8(vis, Internal::OffsetVehicleType);
+
+		auto resources = playground.Arena.Resources;
+		if (index < resources.m_AllGameItemModels.Length) {
+			CGameItemModel@ Model = resources.m_AllGameItemModels[index];
+			if (Model is null) {
+				return VehicleType::CarSport;
+			}
+
+			uint id = Model.Id.Value;
+			     if (id == Internal::IdCarSport.Value)       { return VehicleType::CarSport; }
+			else if (id == Internal::IdCarSnow.Value)        { return VehicleType::CarSnow; }
+			else if (id == Internal::IdCarRally.Value)       { return VehicleType::CarRally; }
+			else if (id == Internal::IdCarDesert.Value)      { return VehicleType::CarDesert; }
+			else if (id == Internal::IdCharacterPilot.Value) { return VehicleType::CharacterPilot; }
+			return VehicleType::CarSport;
+		}
+
+		return VehicleType::CarSport;
+	}
+
+	namespace Internal
+	{
+		int16 OffsetEngineRPM = 0;
+		array<int16> OffsetWheelDirt;
+		int16 OffsetSideSpeed = 0;
+		array<int16> OffsetWheelFalling;
+		int16 OffsetLastTurboLevel = 0;
+		int16 OffsetReactorFinalTimer = 0;
+		int16 OffsetCruiseDisplaySpeed = 0;
+		int16 OffsetVehicleType = 0;
+
+		MwId IdCharacterPilot;
+		MwId IdCarSport;
+		MwId IdCarSnow;
+		MwId IdCarRally;
+		MwId IdCarDesert;
+	}
 }
 #endif
