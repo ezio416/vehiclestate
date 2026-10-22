@@ -80,23 +80,6 @@ namespace VehicleState
 		}
 #endif
 
-#if TMNEXT
-		if (vis is null) {
-			auto gameTerminal = GetGameTerminal();
-			if (gameTerminal !is null) {
-				auto type = Reflection::GetType("CGameTerminal");
-				if (type !is null) {
-					auto offset = type.GetMember("MediaAmbianceClipPlayer").Offset + 0x68;
-					bool isWatchingGhost = Dev::GetOffsetUint8(gameTerminal, offset) == 1;
-					auto ghostVisEntId = Dev::GetOffsetUint32(gameTerminal, offset + 0x4);
-					if (isWatchingGhost && ghostVisEntId & 0x04000000 > 0) {
-						@vis = GetVisFromId(sceneVis, ghostVisEntId);
-					}
-				}
-			}
-		}
-#endif
-
 		return vis;
 	}
 

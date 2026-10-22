@@ -80,7 +80,7 @@ namespace VehicleState
 		return null;
 	}
 
-	// Get the only existing vehicle vis state, if there is only one. Otherwise, this returns null.
+	// Get the vehicle vis being viewed.
 	CSceneVehicleVis@ GetSingularVis(ISceneVis@ sceneVis)
 	{
 		auto vehicleVisMgr = SceneVis::GetManager(sceneVis, VehiclesManagerIndex); // NSceneVehicleVis_SMgr
@@ -93,13 +93,31 @@ namespace VehicleState
 		}
 
 		auto vehiclesCount = Dev::GetOffsetUint32(vehicleVisMgr, VehiclesOffset + 0x8);
-		if (vehiclesCount != 1) {
-			return null;
-		}
+		switch (vehiclesCount) {
+			case 0:
+				return null;
 
-		auto vehicles = Dev::GetOffsetNod(vehicleVisMgr, VehiclesOffset);
-		auto nodVehicle = Dev::GetOffsetNod(vehicles, 0);
-		return Dev::ForceCast<CSceneVehicleVis@>(nodVehicle).Get();
+			case 1: {
+				auto vehicles = Dev::GetOffsetNod(vehicleVisMgr, VehiclesOffset);
+				auto nodVehicle = Dev::GetOffsetNod(vehicles, 0);
+				return Dev::ForceCast<CSceneVehicleVis@>(nodVehicle).Get();
+			}
+
+			default: {
+				auto gameTerminal = GetGameTerminal();
+				if (gameTerminal !is null) {
+					auto isViewingGhost = Dev::GetOffsetUint32(gameTerminal, Internal::OffsetIsViewingGhost) == 1;
+					if (isViewingGhost) {
+						auto viewingEntityId = Dev::GetOffsetUint32(gameTerminal, Internal::OffsetViewingEntityId);
+						if (viewingEntityId & 0x04000000 > 0) {
+							return GetVisFromId(sceneVis, viewingEntityId);
+						}
+					}
+				}
+
+				return null;
+			}
+		}
 	}
 
 	// Get all vehicle vis states. Mostly used for debugging.
