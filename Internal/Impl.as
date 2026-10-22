@@ -90,7 +90,7 @@ namespace VehicleState
 					bool isWatchingGhost = Dev::GetOffsetUint8(gameTerminal, offset) == 1;
 					auto ghostVisEntId = Dev::GetOffsetUint32(gameTerminal, offset + 0x4);
 					if (isWatchingGhost && ghostVisEntId & 0x04000000 > 0) {
-						@vis = GetVis(sceneVis, ghostVisEntId);
+						@vis = GetVisFromId(sceneVis, ghostVisEntId);
 					}
 				}
 			}
